@@ -36,7 +36,7 @@ from diffusers.models.embeddings import (
     Timesteps,
 )
 from diffusers.models.modeling_utils import ModelMixin, load_state_dict, _load_state_dict_into_model
-from diffusers.models.unet_2d_blocks import (
+from diffusers.models.unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,
@@ -46,9 +46,7 @@ from diffusers.models.unet_2d_blocks import (
 )
 from diffusers.utils import (
     CONFIG_NAME,
-    DIFFUSERS_CACHE,
     FLAX_WEIGHTS_NAME,
-    HF_HUB_OFFLINE,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     _add_variant,
@@ -59,6 +57,7 @@ from diffusers.utils import (
     is_torch_version,
     logging,
 )
+from huggingface_hub.constants import HF_HUB_OFFLINE
 from diffusers import __version__
 from mvdiffusion.models.unet_mv2d_blocks import (
     CrossAttnDownBlockMV2D,
@@ -68,6 +67,10 @@ from mvdiffusion.models.unet_mv2d_blocks import (
     get_up_block,
 )
 
+hf_cache_home = os.path.expanduser(
+    os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
+)
+DIFFUSERS_CACHE = os.path.join(hf_cache_home, "diffusers")
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

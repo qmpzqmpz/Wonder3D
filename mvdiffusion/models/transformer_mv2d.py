@@ -20,7 +20,9 @@ from torch import nn
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models.embeddings import ImagePositionalEmbeddings
-from diffusers.utils import BaseOutput, deprecate, maybe_allow_in_graph
+from diffusers.utils.torch_utils import maybe_allow_in_graph
+from diffusers.utils.outputs import BaseOutput
+from diffusers.utils.deprecation_utils import deprecate
 from diffusers.models.attention import FeedForward, AdaLayerNorm, AdaLayerNormZero, Attention
 from diffusers.models.embeddings import PatchEmbed
 from diffusers.models.lora import LoRACompatibleConv, LoRACompatibleLinear
@@ -560,8 +562,8 @@ class BasicMVTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             num_views=self.num_views,
             multiview_attention=self.multiview_attention,
-            sparse_mv_attention=self.sparse_mv_attention,
-            mvcd_attention=self.mvcd_attention,
+            #sparse_mv_attention=self.sparse_mv_attention,
+            #mvcd_attention=self.mvcd_attention,
             **cross_attention_kwargs,
         )
 

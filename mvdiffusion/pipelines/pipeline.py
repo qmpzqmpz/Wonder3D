@@ -14,7 +14,7 @@
 
 import inspect
 import warnings
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import PIL
 import torch
@@ -34,7 +34,7 @@ from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionS
 from einops import rearrange, repeat
 from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-
+from diffusers.utils import USE_PEFT_BACKEND
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -81,7 +81,7 @@ class MVDiffusionImagePipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
         camera_embedding_type: str = 'e_de_da_sincos',
-        num_views: int = 6
+        num_views: int = 4
     ):
         super().__init__()
 
@@ -151,6 +151,55 @@ class MVDiffusionImagePipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin
             [ 0.0000,  0.6904,  4.8359,  0.0000,  1.0000],
             [ 0.0000,  0.3733,  5.5859,  0.0000,  1.0000]], dtype=torch.float16)
 
+    def load_lora_weights(
+            self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
+        ):
+        """
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        `self.text_encoder`.
+
+        All kwargs are forwarded to `self.lora_state_dict`.
+
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
+        loaded.
+
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is
+        loaded into `self.unet`.
+
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state
+        dict is loaded into `self.text_encoder`.
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+            kwargs (`dict`, *optional*):
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint.")
+
+        self.load_lora_into_unet(
+            state_dict,
+            network_alphas=network_alphas,
+            unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
+            adapter_name=adapter_name,
+            _pipeline=self,
+        )
+
     def _encode_image(self, image_pil, device, num_images_per_prompt, do_classifier_free_guidance):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -175,7 +224,7 @@ class MVDiffusionImagePipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin
         
         image_pt = torch.stack([TF.to_tensor(img) for img in image_pil], dim=0).to(device).to(dtype)
         image_pt = image_pt * 2.0 - 1.0
-        image_latents = self.vae.encode(image_pt).latents.mean() * self.vae.config.scaling_factor
+        image_latents = self.vae.encode(image_pt).latents * self.vae.config.scaling_factor
         # Note: repeat differently from official pipelines
         # B1B2B3B4 -> B1B2B3B4B1B2B3B4        
         image_latents = image_latents.repeat(num_images_per_prompt, 1, 1, 1)
